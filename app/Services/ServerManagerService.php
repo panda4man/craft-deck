@@ -57,9 +57,11 @@ class ServerManagerService
 
     protected function generateSupervisorConfig(Server $server, string $jarFile): void
     {
+        $mkdirPath = config('craft-deck.commands.mkdir');
+
         // Ensure the supervisor configuration directory exists
         if (!File::exists($this->supervisorConfDir)) {
-            $result = Process::run("sudo -n mkdir -p {$this->supervisorConfDir}");
+            $result = Process::run("sudo {$mkdirPath} -p {$this->supervisorConfDir}");
 
             if(!$result->successful()) {
                 info($result->errorOutput());
@@ -68,7 +70,7 @@ class ServerManagerService
         }
 
         $config = <<<EOL
-[program:{$server->name}]
+[program:{$server->slug}]
 directory={$server->path}
 command=java -Xmx{$server->ram_mb}M -Xms{$server->ram_mb}M -jar {$jarFile} nogui
 autostart=true
@@ -78,11 +80,18 @@ stdout_logfile={$server->path}/server.log
 stderr_logfile={$server->path}/server-error.log
 EOL;
 
-        $tempFile = storage_path("app/{$server->name}.conf");
+        $tempFile = storage_path("app/{$server->slug}.conf");
         File::put($tempFile, $config);
 
+        $mv = config('craft-deck.commands.mv');
+
         // Move it into place with sudo
-        $result = Process::run("sudo -n mv {$tempFile} {$this->supervisorConfDir}/{$server->name}.conf");
+        $result = Process::run(sprintf(
+            'sudo %s %s %s',
+            escapeshellarg($mv),
+            escapeshellarg($tempFile),
+            escapeshellarg("{$this->supervisorConfDir}/{$server->slug}.conf")
+        ));
 
         if(!$result->successful()) {
             throw new \Exception($result->errorOutput());
@@ -117,5 +126,4 @@ EOL;
 
         return $serverJarPath; // return path to the jar INSIDE the server directory
     }
-
 }
